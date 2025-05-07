@@ -1,7 +1,9 @@
+```python
 # coding=utf-8
 import logging
 import re
 import time
+import os
 from datetime import datetime
 from telegram import Update, BotCommand, MenuButtonCommands
 from telegram.constants import ParseMode
@@ -14,11 +16,12 @@ from telegram.ext import (
 )
 import openai
 
-# ——— Налаштування ———
-BOT_TOKEN         = "7543432497:AAG5DI2jssDxX25oKofN3QBUcVpelS94on4"
-OPENAI_API_KEY    = "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"
-ADMIN_ID          = 2045410830
-CHANNEL_LINK      = "https://t.me/applab_ua"
+# ——— Налаштування через змінні оточення ———
+# BOT_TOKEN, OPENAI_API_KEY та ADMIN_ID мають бути задані в Config Vars Heroku
+BOT_TOKEN      = os.environ["BOT_TOKEN"]
+OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
+ADMIN_ID       = int(os.environ.get("ADMIN_ID", "2045410830"))
+CHANNEL_LINK   = "https://t.me/applab_ua"
 WELCOME_IMAGE_URL = "https://i.ibb.co/FLkjGL5X/IMG-0285.png"
 
 # Ініціалізація OpenAI API ключа
@@ -42,14 +45,14 @@ SYSTEM_PROMPT = (
     "and edit photos per user instructions."
 )
 
-# Патерни для опису себе
+# Ключові фрази для опису бота
 SELF_PATTERNS = [
     r"опиши себя", r"о тебе", r"скажи о себе", r"кто ты",
     r"describe yourself", r"tell me about yourself"
 ]
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Привітальне повідомлення з картинкою як єдиний пост"""
+    """Відправляє привітальне фото та текст одним повідомленням"""
     user = update.effective_user
     name = user.username or user.full_name
 
@@ -59,59 +62,61 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text=f"🔔 Бот відкрився: @{name} (id: {user.id})"
     )
 
-    # Вітальний пост: фото + підпис одним повідомленням
+    # Привітальний текст
     greeting = (
-        "*👋 Привіт!*\n"
-        f"Я — універсальний AI-асистент від [AppLab]({CHANNEL_LINK}) 🤖\n\n"
-        "*✍️ Створюю та редагую тексти*\n"
-        "*🌍 Перекладаю будь-якою мовою світу*\n"
-        "*🎨 Генерую професійні зображення*\n"
-        "*💻 Пишу та пояснюю код*\n\n"
-        "📩 Просто напишіть свій запит у чаті — і я все зроблю!"
+        "*👋 Привіт!*
+"        f"Я — універсальний AI-асистент від [AppLab]({CHANNEL_LINK}) 🤖
+
+"        "*✍️ Створюю та редагую тексти*
+"        "*🌍 Перекладаю будь-якою мовою світу*
+"        "*🎨 Генерую професійні зображення*
+"        "*💻 Пишу та пояснюю код*
+
+"        "📩 Просто напишіть свій запит у чаті — і я все зроблю!"
     )
 
-    # Надсилаємо одним reply_photo з caption
+    # Намагаємося відправити фото з підписом
     try:
-        await update.message.reply_photo(photo=WELCOME_IMAGE_URL, caption=greeting, parse_mode=ParseMode.MARKDOWN)
+        await update.message.reply_photo(
+            photo=WELCOME_IMAGE_URL,
+            caption=greeting,
+            parse_mode=ParseMode.MARKDOWN
+        )
     except Exception as e:
-        logger.warning(f"Не вдалося надіслати вітальне зображення: {e}")
+        logger.warning(f"Не вдалося надіслати фото: {e}")
         await update.message.reply_text(greeting, parse_mode=ParseMode.MARKDOWN)
 
-    # Позначаємо, що користувач побачив старт
+    # Позначимо, що старт відбувся
     context.user_data['started'] = True
 
 async def gpt4o(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обробка запитів через GPT-4o з контекстом та датою"""
+    """Обробляє текстові запити через GPT-4o"""
     prompt = update.message.text.strip()
 
-    # Перевірка на запит про бота
+    # Якщо питають про бота
     for pat in SELF_PATTERNS:
         if re.search(pat, prompt, re.IGNORECASE):
             desc = (
-                "Я — універсальний AI-асистент від AppLab, створений компанією AppLab. "
-                "Мене створив засновник компанії AppLab Evgeniy Kolokolov. "
-                f"Деталі за [ссилкою]({CHANNEL_LINK})."
+                "Я — універсальний AI-асистент від AppLab, створений Evgeniy Kolokolov. "
+                f"Деталі: [AppLab]({CHANNEL_LINK})."
             )
             return await update.message.reply_text(desc, parse_mode=ParseMode.MARKDOWN)
 
-    # Додаємо до історії для адміна
+    # Лог для адміна
     user = update.effective_user
     uname = user.username or user.full_name
     request_history.append(
-        f"<a href='tg://user?id={user.id}'>@{uname}</a> -> GPT-4o: {prompt}"
+        f"<a href='tg://user?id={user.id}'>@{uname}</a> -> GPT: {prompt}"
     )
 
-    # Індикатор набору
+    # Показуємо, що бот друкує
     await update.message.chat.send_action('typing')
 
-    # Поточна дата
+    # Формуємо історію повідомлень
     today = datetime.now().strftime('%Y-%m-%d')
-    system_msg = {'role':'system', 'content': SYSTEM_PROMPT.format(date=today)}
-
-    # Історія чату
+    system_msg = {'role': 'system', 'content': SYSTEM_PROMPT.format(date=today)}
     chat_hist = context.chat_data.setdefault('history', [])
-    chat_hist.append({'role':'user','content':prompt})
-
+    chat_hist.append({'role': 'user', 'content': prompt})
     messages = [system_msg] + chat_hist[-20:]
 
     try:
@@ -122,20 +127,20 @@ async def gpt4o(update: Update, context: ContextTypes.DEFAULT_TYPE):
             max_tokens=1500
         )
         out = resp.choices[0].message.content.strip()
-        chat_hist.append({'role':'assistant','content':out})
+        chat_hist.append({'role': 'assistant', 'content': out})
         await update.message.reply_text(out)
     except Exception as e:
         logger.error(f"GPT-4o error: {e}")
         await update.message.reply_text("⚠️ Помилка OpenAI. Спробуйте пізніше.")
 
 async def image_gen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Генерація професійних зображень через DALL·E 3 з повторними спробами"""
+    """Генерує зображення через DALL·E 3"""
     prompt = update.message.text.strip()
     user = update.effective_user
     uname = user.username or user.full_name
-    request_history.append(f"<a href='tg://user?id={user.id}'>@{uname}</a> -> Image: {prompt}")
+    request_history.append(f"<a href='tg://user?id={user.id}'>@{uname}</a> -> Img: {prompt}")
 
-    full_prompt = f"High-resolution professional image, realistic style, 4k: {prompt}"
+    full_prompt = f"High-resolution professional image: {prompt}"
     for _ in range(3):
         await update.message.chat.send_action('upload_photo')
         try:
@@ -148,31 +153,31 @@ async def image_gen(update: Update, context: ContextTypes.DEFAULT_TYPE):
             url = resp['data'][0]['url']
             return await update.message.reply_photo(photo=url, caption=f"🎨 {prompt}")
         except Exception as e:
-            logger.warning(f"Image attempt failed: {e}")
+            logger.warning(f"Image failed: {e}")
             time.sleep(1)
-    await update.message.reply_text("⚠️ Не вдалося згенерувати картинку після кількох спроб.")
+    await update.message.reply_text("⚠️ Не вдалося згенерувати картинку.")
 
 async def edit_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Редагування фото через DALL·E 3 з повторними спробами"""
+    """Редагує фото через DALL·E 3"""
     if not update.message.reply_to_message or not update.message.reply_to_message.photo:
-        return await update.message.reply_text("⚠️ Щоб редагувати, відповідайте на фото та напишіть '/edit <опис>'")
+        return await update.message.reply_text("⚠️ Щоб редагувати, відповідайте на фото '/edit опис'.")
 
     prompt = update.message.text.partition(' ')[2].strip()
     user = update.effective_user
     uname = user.username or user.full_name
-    request_history.append(f"<a href='tg://user?id={user.id}'>@{uname}</a> -> Edit Image: {prompt}")
+    request_history.append(f"<a href='tg://user?id={user.id}'>@{uname}</a> -> Edit: {prompt}")
 
-    full_prompt = f"Professional photo editing, enhanced: {prompt}"
     photo = update.message.reply_to_message.photo[-1]
     file = await context.bot.get_file(photo.file_id)
     path = f"/mnt/data/{photo.file_id}.png"
     await file.download_to_drive(path)
 
+    full_prompt = f"Professional photo editing: {prompt}"
     for _ in range(3):
         await update.message.chat.send_action('upload_photo')
         try:
             resp = openai.Image.create_edit(
-                image=open(path,'rb'),
+                image=open(path, 'rb'),
                 mask=None,
                 prompt=full_prompt,
                 n=1,
@@ -182,9 +187,9 @@ async def edit_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
             url = resp['data'][0]['url']
             return await update.message.reply_photo(photo=url, caption=f"✏️ {prompt}")
         except Exception as e:
-            logger.warning(f"Edit attempt failed: {e}")
+            logger.warning(f"Edit failed: {e}")
             time.sleep(1)
-    await update.message.reply_text("⚠️ Помилка редагування фото після кількох спроб.")
+    await update.message.reply_text("⚠️ Помилка редагування.")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text or ""
@@ -195,10 +200,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await gpt4o(update, context)
 
 async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("❓ Невідома команда. Просто напишіть свій запит або '/edit' у відповіді на фото.")
+    await update.message.reply_text("❓ Невідома команда. Напишіть запит або '/edit'.")
 
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Адмінська команда (не в меню)"""
+    """Відправляє адміну історію запитів"""
     if update.effective_user.id != ADMIN_ID:
         return
     if not request_history:
@@ -210,14 +215,11 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def post_init(app):
     await app.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
-    await app.bot.set_my_commands([BotCommand("start","🚀 Старт")])
+    await app.bot.set_my_commands([BotCommand("start", "🚀 Старт")])
+
 
 def main():
-    app = (ApplicationBuilder()
-           .token(BOT_TOKEN)
-           .post_init(post_init)
-           .build()
-    )
+    app = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("edit", edit_image))
     app.add_handler(CommandHandler("admin", admin))
@@ -225,5 +227,7 @@ def main():
     app.add_handler(MessageHandler(filters.COMMAND, unknown))
     app.run_polling()
 
+
 if __name__ == '__main__':
     main()
+```
