@@ -1,4 +1,3 @@
-```python
 # coding=utf-8
 import logging
 import re
@@ -17,7 +16,6 @@ from telegram.ext import (
 import openai
 
 # ——— Налаштування через змінні оточення ———
-# BOT_TOKEN, OPENAI_API_KEY та ADMIN_ID мають бути задані в Config Vars Heroku
 BOT_TOKEN      = os.environ["BOT_TOKEN"]
 OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 ADMIN_ID       = int(os.environ.get("ADMIN_ID", "2045410830"))
@@ -64,18 +62,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Привітальний текст
     greeting = (
-        "*👋 Привіт!*
-"        f"Я — універсальний AI-асистент від [AppLab]({CHANNEL_LINK}) 🤖
-
-"        "*✍️ Створюю та редагую тексти*
-"        "*🌍 Перекладаю будь-якою мовою світу*
-"        "*🎨 Генерую професійні зображення*
-"        "*💻 Пишу та пояснюю код*
-
-"        "📩 Просто напишіть свій запит у чаті — і я все зроблю!"
+        "*👋 Привіт!*\n"
+        f"Я — універсальний AI-асистент від [AppLab]({CHANNEL_LINK}) 🤖\n\n"
+        "*✍️ Створюю та редагую тексти*\n"
+        "*🌍 Перекладаю будь-якою мовою світу*\n"
+        "*🎨 Генерую професійні зображення*\n"
+        "*💻 Пишу та пояснюю код*\n\n"
+        "📩 Просто напишіть свій запит у чаті — і я все зроблю!"
     )
 
-    # Намагаємося відправити фото з підписом
     try:
         await update.message.reply_photo(
             photo=WELCOME_IMAGE_URL,
@@ -86,7 +81,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.warning(f"Не вдалося надіслати фото: {e}")
         await update.message.reply_text(greeting, parse_mode=ParseMode.MARKDOWN)
 
-    # Позначимо, що старт відбувся
     context.user_data['started'] = True
 
 async def gpt4o(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -230,4 +224,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-```
