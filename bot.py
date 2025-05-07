@@ -12,7 +12,14 @@ from urllib.parse import urlencode
 import openai
 import urllib3
 # Monkey‑patch vendored urllib3 for python-telegram-bot
+# Map vendored root and submodules to system urllib3 modules
 sys.modules['telegram.vendor.ptb_urllib3.urllib3'] = urllib3
+sys.modules['telegram.vendor.ptb_urllib3.urllib3.contrib'] = urllib3.contrib
+sys.modules['telegram.vendor.ptb_urllib3.urllib3.contrib.appengine'] = urllib3.contrib.appengine
+sys.modules['telegram.vendor.ptb_urllib3.urllib3.packages'] = urllib3.packages
+sys.modules['telegram.vendor.ptb_urllib3.urllib3.packages.six'] = urllib3.packages.six
+sys.modules['telegram.vendor.ptb_urllib3.urllib3.packages.six.moves'] = urllib3.packages.six.moves
+sys.modules['telegram.vendor.ptb_urllib3.urllib3.packages.six.moves.http_client'] = urllib3.packages.six.moves.http_client
 
 import telegram.utils.request
 from telegram import Update, BotCommand, MenuButtonCommands
@@ -224,6 +231,7 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def post_init(app):
     await app.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
     await app.bot.set_my_commands([BotCommand("start","🚀 Старт")])
+
 
 def main():
     app = (
