@@ -16,11 +16,16 @@ from telegram.ext import (
 import openai
 
 # ——— Налаштування через змінні оточення ———
-BOT_TOKEN      = os.environ["BOT_TOKEN"]
-OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
-ADMIN_ID       = int(os.environ.get("ADMIN_ID", "2045410830"))
-CHANNEL_LINK   = "https://t.me/applab_ua"
+# Переконайтесь, що в Heroku Config Vars задані BOT_TOKEN, OPENAI_API_KEY, ADMIN_ID
+BOT_TOKEN        = os.environ.get("BOT_TOKEN")
+OPENAI_API_KEY   = os.environ.get("OPENAI_API_KEY")
+ADMIN_ID         = int(os.environ.get("ADMIN_ID", "2045410830"))
+CHANNEL_LINK     = "https://t.me/applab_ua"
 WELCOME_IMAGE_URL = "https://i.ibb.co/FLkjGL5X/IMG-0285.png"
+
+# Перевірка наявності ключів
+if not BOT_TOKEN or not OPENAI_API_KEY:
+    raise RuntimeError("Environment variables BOT_TOKEN and OPENAI_API_KEY must be set")
 
 # Ініціалізація OpenAI API ключа
 openai.api_key = OPENAI_API_KEY
@@ -54,7 +59,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     name = user.username or user.full_name
 
-    # Сповіщення адміну
+    # Повідомлення адміну
     await context.bot.send_message(
         chat_id=ADMIN_ID,
         text=f"🔔 Бот відкрився: @{name} (id: {user.id})"
@@ -96,17 +101,17 @@ async def gpt4o(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return await update.message.reply_text(desc, parse_mode=ParseMode.MARKDOWN)
 
-    # Лог для адміна
+    # Лог повідомлення
     user = update.effective_user
     uname = user.username or user.full_name
     request_history.append(
         f"<a href='tg://user?id={user.id}'>@{uname}</a> -> GPT: {prompt}"
     )
 
-    # Показуємо, що бот друкує
+    # Індикатор набору
     await update.message.chat.send_action('typing')
 
-    # Формуємо історію повідомлень
+    # Підготовка історії
     today = datetime.now().strftime('%Y-%m-%d')
     system_msg = {'role': 'system', 'content': SYSTEM_PROMPT.format(date=today)}
     chat_hist = context.chat_data.setdefault('history', [])
@@ -146,8 +151,7 @@ async def image_gen(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             url = resp['data'][0]['url']
             return await update.message.reply_photo(photo=url, caption=f"🎨 {prompt}")
-        except Exception as e:
-            logger.warning(f"Image failed: {e}")
+        except Exception:
             time.sleep(1)
     await update.message.reply_text("⚠️ Не вдалося згенерувати картинку.")
 
@@ -180,8 +184,7 @@ async def edit_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             url = resp['data'][0]['url']
             return await update.message.reply_photo(photo=url, caption=f"✏️ {prompt}")
-        except Exception as e:
-            logger.warning(f"Edit failed: {e}")
+        except Exception:
             time.sleep(1)
     await update.message.reply_text("⚠️ Помилка редагування.")
 
