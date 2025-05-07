@@ -2,6 +2,7 @@
 # coding: utf-8
 
 import os
+import sys
 import logging
 import re
 import time
@@ -9,6 +10,10 @@ from datetime import datetime
 from urllib.parse import urlencode
 
 import openai
+import urllib3
+# Monkey‑patch vendored urllib3 for python-telegram-bot
+sys.modules['telegram.vendor.ptb_urllib3.urllib3'] = urllib3
+
 import telegram.utils.request
 from telegram import Update, BotCommand, MenuButtonCommands
 from telegram.constants import ParseMode
@@ -20,16 +25,14 @@ from telegram.ext import (
     filters,
 )
 
-# ——— Force UTF-8 encoding for telegram form data ———
+# ——— Force UTF-8 for form data in telegram requests ———
 def _encode_body(self, data):
-    # override latin-1 → utf-8
     return urlencode(data).encode("utf-8")
 
 telegram.utils.request.Request._encode_body = _encode_body
 
 # ——— Sanitizer for problematic characters ———
 def sanitize(text: str) -> str:
-    # replace non‑breaking hyphen with normal hyphen, add others if needed
     return text.replace("\u2011", "-")
 
 # ——— Configuration from environment ———
@@ -39,6 +42,7 @@ ADMIN_ID          = int(os.environ.get("ADMIN_ID", "2045410830"))
 CHANNEL_LINK      = os.environ.get("CHANNEL_LINK", "https://t.me/applab_ua")
 WELCOME_IMAGE_URL = os.environ.get("WELCOME_IMAGE_URL", "https://i.ibb.co/FLkjGL5X/IMG-0285.png")
 
+# Initialize OpenAI
 openai.api_key = OPENAI_API_KEY
 
 # ——— Logging ———
@@ -48,7 +52,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# store request history for admin
+# Store history of requests for admin
 request_history = []
 
 SYSTEM_PROMPT = (
@@ -67,7 +71,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     name = user.username or user.full_name
 
-    # notify admin
+    # Notify admin
     await context.bot.send_message(
         chat_id=ADMIN_ID,
         text=f"🔔 Бот відкрився: @{name} (id: {user.id})"
@@ -98,7 +102,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def gpt4o(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = update.message.text.strip()
 
-    # self‑description
+    # Self-description handling
     for pat in SELF_PATTERNS:
         if re.search(pat, prompt, re.IGNORECASE):
             desc = (
@@ -108,7 +112,7 @@ async def gpt4o(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return await update.message.reply_text(sanitize(desc), parse_mode=ParseMode.MARKDOWN)
 
-    # log for admin
+    # Log request for admin
     user = update.effective_user
     uname = user.username or user.full_name
     request_history.append(
@@ -118,10 +122,10 @@ async def gpt4o(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.chat.send_action("typing")
 
     today = datetime.now().strftime("%Y-%m-%d")
-    system_msg = {"role": "system", "content": SYSTEM_PROMPT.format(date=today)}
+    system_msg = {'role':'system', 'content': SYSTEM_PROMPT.format(date=today)}
 
-    chat_hist = context.chat_data.setdefault("history", [])
-    chat_hist.append({"role": "user", "content": prompt})
+    chat_hist = context.chat_data.setdefault('history', [])
+    chat_hist.append({'role':'user','content':prompt})
 
     messages = [system_msg] + chat_hist[-20:]
 
@@ -134,7 +138,7 @@ async def gpt4o(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         out = resp.choices[0].message.content.strip()
         out = sanitize(out)
-        chat_hist.append({"role": "assistant", "content": out})
+        chat_hist.append({'role':'assistant','content':out})
         await update.message.reply_text(out)
     except Exception as e:
         logger.error(f"GPT-4o error: {e}")
@@ -148,7 +152,7 @@ async def image_gen(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     full_prompt = f"High-resolution professional image, realistic style, 4k: {prompt}"
     for _ in range(3):
-        await update.message.chat.send_action("upload_photo")
+        await update.message.chat.send_action('upload_photo')
         try:
             resp = openai.Image.create(
                 prompt=full_prompt,
@@ -156,7 +160,7 @@ async def image_gen(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 size="1024x1024",
                 model="dall-e-3"
             )
-            url = resp["data"][0]["url"]
+            url = resp['data'][0]['url']
             return await update.message.reply_photo(photo=url, caption=f"🎨 {prompt}")
         except Exception as e:
             logger.warning(f"Image attempt failed: {e}")
@@ -165,11 +169,9 @@ async def image_gen(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def edit_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.reply_to_message or not update.message.reply_to_message.photo:
-        return await update.message.reply_text(
-            "⚠️ Щоб редагувати, відповідайте на фото та напишіть '/edit <опис>'"
-        )
+        return await update.message.reply_text("⚠️ Щоб редагувати, відповідайте на фото та напишіть '/edit <опис>'")
 
-    prompt = update.message.text.partition(" ")[2].strip()
+    prompt = update.message.text.partition(' ')[2].strip()
     user = update.effective_user
     uname = user.username or user.full_name
     request_history.append(f"<a href='tg://user?id={user.id}'>@{uname}</a> → Edit Image: {prompt}")
@@ -181,17 +183,17 @@ async def edit_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await file.download_to_drive(path)
 
     for _ in range(3):
-        await update.message.chat.send_action("upload_photo")
+        await update.message.chat.send_action('upload_photo')
         try:
             resp = openai.Image.create_edit(
-                image=open(path, "rb"),
+                image=open(path,'rb'),
                 mask=None,
                 prompt=full_prompt,
                 n=1,
                 size="1024x1024",
                 model="dall-e-3"
             )
-            url = resp["data"][0]["url"]
+            url = resp['data'][0]['url']
             return await update.message.reply_photo(photo=url, caption=f"✏️ {prompt}")
         except Exception as e:
             logger.warning(f"Edit attempt failed: {e}")
@@ -202,7 +204,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text or ""
     if re.search(r"\b(нарисуй|рисуй|draw|paint|create|generate)\b", text, re.IGNORECASE):
         return await image_gen(update, context)
-    if text.lower().startswith("/edit"):
+    if text.lower().startswith('/edit'):
         return await edit_image(update, context)
     return await gpt4o(update, context)
 
@@ -221,7 +223,7 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def post_init(app):
     await app.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
-    await app.bot.set_my_commands([BotCommand("start", "🚀 Старт")])
+    await app.bot.set_my_commands([BotCommand("start","🚀 Старт")])
 
 def main():
     app = (
@@ -237,5 +239,5 @@ def main():
     app.add_handler(MessageHandler(filters.COMMAND, unknown))
     app.run_polling()
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
